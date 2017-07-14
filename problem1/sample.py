@@ -133,7 +133,7 @@ class problem:
         '''
 
         count = 0
-        population = np.zeros((n_population, self.n_job, self.n_dc, self.n_slot))
+        population = np.zeros((n_population/2, self.n_job, self.n_dc, self.n_slot))
         while count < n_population /2:
             if self.random_generate():
                 generated_solution = self.x.copy()
@@ -143,6 +143,8 @@ class problem:
             else:
                 print "error"
                 continue
+        op_population = self.opposite_vectors(population)
+        population = np.concatenate((population, op_population),axis=0)
 
 
     '''
@@ -255,6 +257,19 @@ class problem:
         #self.model.setObjective(sum(self.d[i] for i in range(self.n_job)), GRB.MINIMIZE)
         #self.model.setObjective(sum( self.r_power[i] * self.x[i,j,t] - self.y[i,j, t] for i in range(self.n_job) for j in range(self.n_dc) for t in range(self.n_slot)), GRB.MINIMIZE)
 
+
+    '''
+    X is an array of vector x
+    We assume that each variable is in {0,1}
+    This return x_i = rand(0,1)-x_i.
+    '''
+    def opposite_vectors(self,X):
+        new_X = np.random.randint(2, size=X.shape) - X
+        index = np.where(new_X < 0)
+        for s,i,j,t in zip(index[0],index[1],index[2],index[3]):
+             new_X[s,i,j,t] = random.randint(0,1)
+        return new_X
+        
     '''
     Basic epsion constraint method uses epsilon value as the upper bound on f_1,
     but our method uses upper (u_eps) and lower bounds (l_eps) on fq_1.
