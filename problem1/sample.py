@@ -19,11 +19,11 @@ class problem:
         # Parameter of chance-constrained programming, probabity of holding
         self.alpha = 0.1
 
-        price = np.loadtxt("./problem1/price.csv", delimiter=",")
-        self.job = np.loadtxt("./problem1/job50.csv", delimiter="," , dtype=int)
+        price = np.loadtxt("../problem1/price.csv", delimiter=",")
+        self.job = np.loadtxt("../problem1/job50.csv", delimiter="," , dtype=int)
         self.job = self.job[:30, :]
 
-        insolation = np.loadtxt("./problem1/insolation.csv",delimiter =",") # Unit of insolation is 0.01[MJ/m^2] in the file
+        insolation = np.loadtxt("../problem1/insolation.csv",delimiter =",") # Unit of insolation is 0.01[MJ/m^2] in the file
         #insolation = insolation[:, :8]
 
         self.n_slot = insolation.shape[1]   # the number of time slots considered in scheduling (indexed by t)
@@ -79,7 +79,7 @@ class problem:
         # Required poer
         # In our observation, each core needs 20W.
         self.r_power = self.job[:,0]
-        self.r_power = self.r_power * 20 / 1000
+        self.r_power = self.r_power * 20.0 / 1000.0
 
 #         deadline_range = np.array([self.job[:,1], self.n_slot - self.job[:,1]])
         self.deadline = np.empty(self.n_job)
@@ -138,7 +138,7 @@ class problem:
             if self.random_generate():
                 generated_solution = self.x.copy()
                 population[count,:,:,:] = generated_solution
-                self.obj_values();
+                print self.obj_values()
                 count +=1
             else:
                 print "error"
@@ -147,7 +147,7 @@ class problem:
 
     '''
     This function generates initial solutions randomly.
-    However, ranomf generation yields many infeasible solutions.
+    However, random generation yields many infeasible solutions.
     We assign jobs 1 and 13 that requires many CPU cores first.
     If solution gets infeasible, this retries times of the specified numbers.
     '''
@@ -226,6 +226,8 @@ class problem:
     def obj_values(self):
 
         D = P = 0
+        
+        p_consumption = np.zeros((self.n_dc, self.n_slot)) 
         for j in range(self.n_job):
 
             # This returns
@@ -236,8 +238,14 @@ class problem:
             end_time = assignment[1][self.job[j,1]-1]
             if end_time > self.deadline[j]:
                 D += end_time - self.deadline[j]
-
-
+                
+            for a in assignment[1]:
+                p_consumption[assignment[0][0], a] += self.r_power[j] 
+        
+        p_consumption = np.maximum(p_consumption-self.g_power_percentile, np.zeros((self.n_dc, self.n_slot)) )
+        P = np.sum(p_consumption)
+        
+        return D, P
 
 
 #            D = sum(self.model.getVarByName('d' + str(i)).x for i in range(self.n_job))
