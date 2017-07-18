@@ -19,11 +19,11 @@ class problem:
         # Parameter of chance-constrained programming, probabity of holding
         self.alpha = 0.1
 
-        price = np.loadtxt("../problem1/price.csv", delimiter=",")
-        self.job = np.loadtxt("../problem1/job50.csv", delimiter="," , dtype=int)
+        price = np.loadtxt("./problem1/price.csv", delimiter=",")
+        self.job = np.loadtxt("./problem1/job50.csv", delimiter="," , dtype=int)
         self.job = self.job[:30, :]
 
-        insolation = np.loadtxt("../problem1/insolation.csv",delimiter =",") # Unit of insolation is 0.01[MJ/m^2] in the file
+        insolation = np.loadtxt("./problem1/insolation.csv",delimiter =",") # Unit of insolation is 0.01[MJ/m^2] in the file
         #insolation = insolation[:, :8]
 
         self.n_slot = insolation.shape[1]   # the number of time slots considered in scheduling (indexed by t)
@@ -105,8 +105,7 @@ class problem:
         obl_prob = 0.2  # we consider obl at rate 0.2
         f1_goal_bounds = [0, 50] # goal vectors have values of rand(0,50) for f1 and d(0,50) for f2
         f2_goal_bounds = [0, 50] # goal vectors have values of rand(0,50) for f1 and d(0,50) for f2
-
-
+        candidate =[]
         '''
         x: decision variable (0: job is not assigned, 1: job is assigned)
         y: sub decision variable for g_ijt * x_ijt
@@ -138,13 +137,33 @@ class problem:
             if self.random_generate():
                 generated_solution = self.x.copy()
                 population[count,:,:,:] = generated_solution
-                print self.obj_values()
                 count +=1
             else:
                 print "error"
                 continue
         op_population = self.opposite_vectors(population)
         population = np.concatenate((population, op_population),axis=0)
+        population_with_eval = population[...,None, None]
+       # population_with_eval = population[:,:,:,:,np.newaxis]
+
+        # evaluation  values are stored in this list
+        # each population has two objective function values
+        eval_list = np.empty((n_population, 2))
+        for i in range(n_population):
+            #eval_list[i,:] = self.obj_values(population[i,:,:,:])
+            evaluation = self.obj_values(population[i,:,:,:])
+            population_with_eval[i,:,:,:,0,:] = evaluation[0]
+            population_with_eval[i,:,:,:,:,0] =  evaluation[1]
+
+
+        '''
+        Now shape of "population_with_eval" (n_population, n_dc, n_job, n_slot. 1, 1)
+        The last two are evaluation. From this numpy array, we determine
+        Candidate Pareto Optimal Solution in Initial Solutions.
+       '''
+
+
+
 
 
     '''
@@ -225,28 +244,28 @@ class problem:
     '''
     Return values of two objective functions. total delay D and power P
     '''
-    def obj_values(self):
+    def obj_values(self, solution):
 
         D = P = 0
-        
-        p_consumption = np.zeros((self.n_dc, self.n_slot)) 
+
+        p_consumption = np.zeros((self.n_dc, self.n_slot))
         for j in range(self.n_job):
 
             # This returns
             # assignment[0]: data center to process the job (same value in the array)
             # assignment[1]: time slot for the job like t= 1, 2, 3, 4.
-            assignment = np.where(self.x[j,:,:] == 1)
+            assignment = np.where(solution[j,:,:] == 1)
 
             end_time = assignment[1][self.job[j,1]-1]
             if end_time > self.deadline[j]:
                 D += end_time - self.deadline[j]
-                
+
             for a in assignment[1]:
-                p_consumption[assignment[0][0], a] += self.r_power[j] 
-        
+                p_consumption[assignment[0][0], a] += self.r_power[j]
+
         p_consumption = np.maximum(p_consumption-self.g_power_percentile, np.zeros((self.n_dc, self.n_slot)) )
         P = np.sum(p_consumption)
-        
+
         return D, P
 
 
@@ -269,7 +288,7 @@ class problem:
         for s,i,j,t in zip(index[0],index[1],index[2],index[3]):
              new_X[s,i,j,t] = random.randint(0,1)
         return new_X
-        
+
     '''
     Basic epsion constraint method uses epsilon value as the upper bound on f_1,
     but our method uses upper (u_eps) and lower bounds (l_eps) on fq_1.
