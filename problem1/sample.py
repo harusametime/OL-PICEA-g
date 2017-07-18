@@ -105,7 +105,7 @@ class problem:
         obl_prob = 0.2  # we consider obl at rate 0.2
         f1_goal_bounds = [0, 50] # goal vectors have values of rand(0,50) for f1 and d(0,50) for f2
         f2_goal_bounds = [0, 50] # goal vectors have values of rand(0,50) for f1 and d(0,50) for f2
-        candidate =[]
+        candidate_list =[]
         '''
         x: decision variable (0: job is not assigned, 1: job is assigned)
         y: sub decision variable for g_ijt * x_ijt
@@ -143,26 +143,32 @@ class problem:
                 continue
         op_population = self.opposite_vectors(population)
         population = np.concatenate((population, op_population),axis=0)
-        population_with_eval = population[...,None, None]
        # population_with_eval = population[:,:,:,:,np.newaxis]
 
         # evaluation  values are stored in this list
         # each population has two objective function values
-        eval_list = np.empty((n_population, 2))
-        for i in range(n_population):
-            #eval_list[i,:] = self.obj_values(population[i,:,:,:])
-            evaluation = self.obj_values(population[i,:,:,:])
-            population_with_eval[i,:,:,:,0,:] = evaluation[0]
-            population_with_eval[i,:,:,:,:,0] =  evaluation[1]
+        population_with_eval = []
+        #eval_list = np.empty((n_population, 3))
 
+        for i in range(n_population):
+            evaluation = self.obj_values(population[i,:,:,:])
+            flatten_solution = np.reshape(population[i], -1)
+            population_with_eval.append(np.concatenate((flatten_solution,evaluation)))
+            #evaluation = self.obj_values(population[i,:,:,:])
+            #population_with_eval[i,:,:,:,0,:] = evaluation[0]
+            #population_with_eval[i,:,:,:,:,0] =  evaluation[1]
+
+
+
+        population_with_eval = pd.DataFrame(population_with_eval)
+        n_columns = population_with_eval.shape[1]
+        sorted_population =  population_with_eval.sort_values(by=n_columns-2, ascending = True)
 
         '''
-        Now shape of "population_with_eval" (n_population, n_dc, n_job, n_slot. 1, 1)
-        The last two are evaluation. From this numpy array, we determine
-        Candidate Pareto Optimal Solution in Initial Solutions.
-       '''
-
-
+        Now sorted_population is a vector of which size is n_job * n_dc * n_slot + 2 eval_values
+        For example, 30 jobs, 5 DCs  and 24 slots yields 3600 values for a solution. The solution
+        can be converted by reshape(first3600, (30, 5, 24)).
+        '''
 
 
 
