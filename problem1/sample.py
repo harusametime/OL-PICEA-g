@@ -12,9 +12,15 @@ class problem:
     def __init__(self, l_eps, u_eps):
 
 
+        '''
+        flag_OL indicates that this uses Opposition based Learning strategy
+        In our problem, this strategy generate infeasible solutions due to the constraint.
+        As default, this flag is set to False.
+
+        '''
+        flag_OL = False
+
         np.random.seed(0)
-
-
 
         # Parameter of chance-constrained programming, probabity of holding
         self.alpha = 0.1
@@ -59,29 +65,12 @@ class problem:
                 else:
                     self.g_power_percentile[j,t] = 0
 #
-#         for i in range(g_power_avg.shape[0]):
-#             for j in range(g_power_avg.shape[1]):
-#                 for t in range(self.n_sampling):
-#                     if g_power_std[i,j] > 0:
-#                         self.g_power[i,j,t] = np.random.normal(g_power_avg[i,j], g_power_std[i,j])
-#                     else:
-#                         self.g_power[i,j,t] = 0
-
-      #  print self.g_power[:,:,0]
-#
-#         print g_power_std
-#         print np.random.normal(g_power_avg, g_power_std)
-# #        g_power_covar = np.diag(g_power_var)
-# #         self.g_power = np.random.multivariate_normal(g_power_avg, g_power_covar, size=self.n_sampling)
-#         self.g_power = np.reshape(self.g_power,[g_power_shape[0], g_power_shape[1], self.n_sampling])
-
-
         # Required poer
         # In our observation, each core needs 20W.
         self.r_power = self.job[:,0]
         self.r_power = self.r_power * 20.0 / 1000.0
 
-#         deadline_range = np.array([self.job[:,1], self.n_slot - self.job[:,1]])
+        # deadline_range = np.array([self.job[:,1], self.n_slot - self.job[:,1]])
         self.deadline = np.empty(self.n_job)
         for i in range(self.n_job):
             #print deadline_range[0, i],deadline_range[1, i]
@@ -132,17 +121,27 @@ class problem:
 
         count = 0
         population = np.zeros((n_population/2, self.n_job, self.n_dc, self.n_slot))
-        while count < n_population /2:
-            if self.random_generate():
-                generated_solution = self.x.copy()
-                population[count,:,:,:] = generated_solution
-                count +=1
-            else:
-                print "error"
-                continue
-        op_population = self.opposite_vectors(population)
-        population = np.concatenate((population, op_population),axis=0)
-       # population_with_eval = population[:,:,:,:,np.newaxis]
+
+        if flag_OL:
+            while count < n_population /2:
+                if self.random_generate():
+                    generated_solution = self.x.copy()
+                    population[count,:,:,:] = generated_solution
+                    count +=1
+                else:
+                    print "error"
+                    continue
+            op_population = self.opposite_vectors(population)
+            population = np.concatenate((population, op_population),axis=0)
+        else:
+            while count < n_population:
+                if self.random_generate():
+                    generated_solution = self.x.copy()
+                    population[count,:,:,:] = generated_solution
+                    count +=1
+                else:
+                    print "error"
+                    continue
 
         # evaluation  values are stored in this list
         # each population has two objective function values
