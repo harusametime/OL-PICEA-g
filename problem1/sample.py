@@ -103,8 +103,8 @@ class problem:
         max_gen = 100
         n_goals = 100
         obl_prob = 0.2  # we consider obl at rate 0.2
-        f1_goal_bounds = [0, 50] # goal vectors have values of rand(0,50) for f1 and d(0,50) for f2
-        f2_goal_bounds = [0, 50] # goal vectors have values of rand(0,50) for f1 and d(0,50) for f2
+        goal_bounds = np.array([[0, 50], [20, 50]]) # goal vectors have values of rand(0,50) for f1 and d(0,50) for f1
+                                          # goal vectors have values of rand(20,50) for f1 and d(0,50) for f2
         '''
         x: decision variable (0: job is not assigned, 1: job is assigned)
         y: sub decision variable for g_ijt * x_ijt
@@ -161,7 +161,9 @@ class problem:
 
         population_with_eval = pd.DataFrame(population_with_eval)
         n_columns = population_with_eval.shape[1]
-        sorted_population =  population_with_eval.sort_values(by=n_columns-2, ascending = True)
+        obj1 = n_columns-2
+        obj2 = n_columns-1
+        sorted_population =  population_with_eval.sort_values(by=[obj1,obj2], ascending = True)
 
         '''
         Now sorted_population is a vector of which size is n_job * n_dc * n_slot + 2 eval_values
@@ -171,8 +173,23 @@ class problem:
         current_best = pd.DataFrame()
         min = 0
         for key, row in sorted_population.iterrows():
-            print key 
+            if row.iloc[obj1] > min:
+                _solution = np.reshape(row.values[:self.n_job * self.n_dc * self.n_slot], ( self.n_job, self.n_dc, self.n_slot ))
+                if self.is_feasible(_solution):
+                    current_best.append(row)
+                    min = row.iloc[obj1]
 
+        '''
+        Geenrate goal vectors for 2 objectives
+        '''
+        goals = np.empty((n_goals, 2))
+        for g in range(2):
+            goals[:,g] = np.random.rand(n_goals) * (goal_bounds[g,1]-goal_bounds[g,0]) + goal_bounds[g,0]
+
+
+        '''
+        loop for evolutionary algorithm
+        '''
 
 
 
@@ -237,13 +254,16 @@ class problem:
     then only the following constraints need to be checked.
     - Job does not need more processors
     '''
-    def is_feasible(self):
+    def is_feasible(self, _solution = None):
+        if _solution is None:
+            _solution = self.x
+
         for j in range(self.n_dc):
             for t in range(self.n_slot):
                 total_proc =0
                 # constraint 3
                 for i in range(self.n_job):
-                    total_proc += self.job[i,0] * self.x[i,j,t]
+                    total_proc += self.job[i,0] * _solution[i,j,t]
 
                 #total_proc = sum(self.job[i,0] * self.x[i,j,t] for i in range(self.n_job))
                 if total_proc > self.free_proc[j]:
