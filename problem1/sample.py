@@ -172,6 +172,8 @@ class problem:
 
 
 
+
+
     '''
     This function generates initial solutions randomly.
     However, random generation yields many infeasible solutions.
