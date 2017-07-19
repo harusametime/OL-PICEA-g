@@ -105,7 +105,6 @@ class problem:
         obl_prob = 0.2  # we consider obl at rate 0.2
         f1_goal_bounds = [0, 50] # goal vectors have values of rand(0,50) for f1 and d(0,50) for f2
         f2_goal_bounds = [0, 50] # goal vectors have values of rand(0,50) for f1 and d(0,50) for f2
-        candidate_list =[]
         '''
         x: decision variable (0: job is not assigned, 1: job is assigned)
         y: sub decision variable for g_ijt * x_ijt
@@ -169,7 +168,10 @@ class problem:
         For example, 30 jobs, 5 DCs  and 24 slots yields 3600 values for a solution. The solution
         can be converted by reshape(first3600, (30, 5, 24)).
         '''
-
+        current_best = pd.DataFrame()
+        min = 0
+        for key, row in sorted_population.iterrows():
+            print key 
 
 
     '''
