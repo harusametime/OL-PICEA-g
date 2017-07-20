@@ -6,6 +6,7 @@ import random
 
 from scipy.stats import norm
 from mpmath import rand
+from ortools.constraint_solver._pywrapcp import new_BaseLns
 
 
 class problem:
@@ -202,6 +203,7 @@ class problem:
             n_crossover = int(n_population * (1-mutation_rate))
             new_population = self.crossover(sorted_population, n_crossover)
 
+
             break
 
 
@@ -210,22 +212,50 @@ class problem:
 
     '''
     def crossover(self,sorted_population, n_crossover):
-        pairs = np.empty((n_crossover, 2),dtype=int)
-        for i in range(n_crossover):
+
+        _new_solutions = pd.DataFrame()
+
+        #Crossover generates 2 solutions. We need  a half pairs of needed solutions.
+        pairs = np.empty((n_crossover/2, 2),dtype=int)
+        for i in range(n_crossover/2):
             pairs[i:] =np.array(random.sample(range(sorted_population.shape[0]), 2), dtype=int)
 
         for p in pairs:
             _solution = np.empty((len(p), self.n_job, self.n_dc, self.n_slot))
+
             for s in range(len(p)):
-                print s, p[s]
                 _solution_in_panda = sorted_population.iloc[p[s], :].values[:self.n_job * self.n_dc * self.n_slot]
                 _solution[s,:,:,:] = np.reshape(_solution_in_panda,  (self.n_job, self.n_dc, self.n_slot ))
 
-        for s in range(2):
-            crossover_point = np.random.randint(0, self.n_dc)
-            pass
+            _new_solution = np.zeros((len(p), self.n_job, self.n_dc, self.n_slot))
+
+            crossover_point = np.random.randint(0, self.n_dc -1 ) # return rand value in [0, self.n_dc-2]
+            '''
+            Now we consider crossover between solutions A and B in an element of pairs
+            A_assigned (B_**) : index i,j,t when x_ijt = 1 in solution A (B)
+            '''
+            A_assigned = np.where(_solution[0,:,:,:]==1)
+            B_assigned = np.where(_solution[1,:,:,:]==1)
+            new_A_assigned = np.copy(A_assigned)
+            new_B_assigned = np.copy(B_assigned)
+
+            for a in range(A_assigned[0].shape[0]):
+                # Crossover here
+                if A_assigned[1][a] <= crossover_point:
+                    new_B_assigned[1][a] = A_assigned[1][a]
+                if B_assigned[1][a] > crossover_point:
+                    new_A_assigned[1][a] = B_assigned[1][a]
+
+                _new_solution[0,new_A_assigned[0][a],new_A_assigned[1][a],new_A_assigned[2][a]] = 1
+                _new_solution[1,new_B_assigned[0][a],new_B_assigned[1][a],new_B_assigned[2][a]] = 1
 
 
+
+            #print pd.DataFrame(np.append(np.reshape(_new_solution[0,...], -1), self.obj_values(_new_solution[0,...])))
+            _new_solutions = _new_solutions.append(pd.DataFrame(np.append(np.reshape(_new_solution[0,...], -1), self.obj_values(_new_solution[0,...]))).T)
+            _new_solutions = _new_solutions.append(pd.DataFrame(np.append(np.reshape(_new_solution[1,...], -1), self.obj_values(_new_solution[1,...]))).T)
+
+        return _new_solutions
 
     '''
     This function generates initial solutions randomly.
