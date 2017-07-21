@@ -174,6 +174,12 @@ class problem:
 
 
         '''
+        Generate goal vectors for 2 objectives
+        '''
+        goals = self.generate_goals(population_with_eval, obj1, obj2, n_goals)
+
+
+        '''
         loop for evolutionary algorithm
         '''
         itr_generation = 1
@@ -190,24 +196,65 @@ class problem:
             
             population_with_eval = population_with_eval.append(cross_over_population)
             population_with_eval = population_with_eval.append(mutate_population)
-            
-            
-            '''
-            Generate goal vectors for 2 objectives
-            '''
-            obj1_range = np.array((population_with_eval.iloc[:,obj1].min(), population_with_eval.iloc[:,obj1].max()))
-            obj2_range = np.array((population_with_eval.iloc[:,obj2].min(), population_with_eval.iloc[:,obj2].max()))
-            obj1_goal_range = np.array((obj1_range[0], obj1_range[1]*1.2))
-            obj2_goal_range = np.array((obj2_range[0], obj2_range[1]*1.2))          
-            goals = np.empty((n_goals, 2))
-            for g in range(n_goals):
-                goals[g, 0] = np.random.rand() * (obj1_goal_range[1] - obj1_goal_range[0]) + obj1_goal_range[0]
-                goals[g, 1] = np.random.rand() * (obj2_goal_range[1] - obj2_goal_range[0]) + obj2_goal_range[0]
-
-
-            
+             
             self.update_best(population_with_eval, obj1, obj2)
+            print self.current_best
+           
+            '''
+            add goal vectors
+            '''
             
+            goals = np.vstack((goals, self.generate_goals(population_with_eval, obj1, obj2, n_goals)))
+            
+            '''
+            Calculate fitness
+            '''
+            satisfied_number = np.zeros((goals.shape[0]))
+            solution_fitness = np.zeros((len(population_with_eval)))
+            goal_fitness = np.zeros((goals.shape[0],1))
+            
+            for n in range(goals.shape[0]):
+                for p in range(len(population_with_eval)):
+                    if goals[n, 0] >= population_with_eval.iloc[p,obj1] and goals[n, 1] >= population_with_eval.iloc[p,obj2]:
+                        satisfied_number[n] += 1
+            
+            for p in range(len(population_with_eval)):
+                for n in range(goals.shape[0]):
+                    if goals[n, 0] >= population_with_eval.iloc[p,obj1] and goals[n, 1] >= population_with_eval.iloc[p,obj2]:
+                        solution_fitness[p] += float(1/satisfied_number[n])
+            
+            goal_fitness = (satisfied_number-1) / (2 * n_goals - 1)
+            goal_fitness[goal_fitness < 0] = 0
+            goal_fitness = 1 + (1+ goal_fitness)
+            
+            
+            '''
+            select solutions and goals based on fitness
+            '''
+            temp = (-solution_fitness).argsort()
+            ranks = np.empty(len(solution_fitness), int)
+            ranks[temp] = np.arange(len(solution_fitness))
+            population_with_eval = population_with_eval.iloc[ranks < n_goals]
+         
+            temp = (-goal_fitness).argsort()
+            ranks = np.empty(len(goal_fitness), int)
+            ranks[temp] = np.arange(len(goal_fitness))
+            goals = goals[ranks < n_goals]
+                        
+    '''
+    generate goal vectors
+    ''' 
+    def generate_goals(self,population_with_eval, obj1, obj2, n_goals):
+        obj1_range = np.array((population_with_eval.iloc[:,obj1].min(), population_with_eval.iloc[:,obj1].max()))
+        obj2_range = np.array((population_with_eval.iloc[:,obj2].min(), population_with_eval.iloc[:,obj2].max()))
+        obj1_goal_range = np.array((obj1_range[0], obj1_range[1]*1.2))
+        obj2_goal_range = np.array((obj2_range[0], obj2_range[1]*1.2))          
+        goals = np.empty((n_goals, 2))
+        for g in range(n_goals):
+            goals[g, 0] = np.random.rand() * (obj1_goal_range[1] - obj1_goal_range[0]) + obj1_goal_range[0]
+            goals[g, 1] = np.random.rand() * (obj2_goal_range[1] - obj2_goal_range[0]) + obj2_goal_range[0]
+
+        return goals
             
     '''
     update current_best
