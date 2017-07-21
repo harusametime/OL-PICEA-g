@@ -27,11 +27,11 @@ class problem:
         # Parameter of chance-constrained programming, probabity of holding
         self.alpha = 0.1
 
-        price = np.loadtxt("./problem1/price.csv", delimiter=",")
-        self.job = np.loadtxt("./problem1/job50.csv", delimiter="," , dtype=int)
+        price = np.loadtxt("../problem1/price.csv", delimiter=",")
+        self.job = np.loadtxt("../problem1/job50.csv", delimiter="," , dtype=int)
         self.job = self.job[:30, :]
 
-        insolation = np.loadtxt("./problem1/insolation.csv",delimiter =",") # Unit of insolation is 0.01[MJ/m^2] in the file
+        insolation = np.loadtxt("../problem1/insolation.csv",delimiter =",") # Unit of insolation is 0.01[MJ/m^2] in the file
         #insolation = insolation[:, :8]
 
         self.n_slot = insolation.shape[1]   # the number of time slots considered in scheduling (indexed by t)
@@ -203,7 +203,7 @@ class problem:
             n_crossover = int(n_population * (1-mutation_rate))
             cross_over_population = self.crossover(sorted_population, n_crossover)
             mutate_population = self.mutate(sorted_population, n_population - n_crossover)
-
+            
             break
 
 
@@ -243,8 +243,10 @@ class problem:
                 # Crossover here
                 if A_assigned[1][a] <= crossover_point:
                     new_B_assigned[1][a] = A_assigned[1][a]
+                    new_B_assigned[2][a] = A_assigned[2][a]
                 if B_assigned[1][a] > crossover_point:
                     new_A_assigned[1][a] = B_assigned[1][a]
+                    new_A_assigned[2][a] = B_assigned[2][a]
 
                 _new_solution[0,new_A_assigned[0][a],new_A_assigned[1][a],new_A_assigned[2][a]] = 1
                 _new_solution[1,new_B_assigned[0][a],new_B_assigned[1][a],new_B_assigned[2][a]] = 1
@@ -263,7 +265,45 @@ class problem:
 
     '''
     def mutate(self,sorted_population, n_mutate):
-        pass
+        
+        _new_solutions = pd.DataFrame()
+        mutated_solution_index =np.array(random.sample(range(sorted_population.shape[0]), n_mutate), dtype=int)
+        
+        for m in mutated_solution_index:
+            
+            _solution_in_panda = sorted_population.iloc[m, :].values[:self.n_job * self.n_dc * self.n_slot]
+            _solution = np.reshape(_solution_in_panda,  (self.n_job, self.n_dc, self.n_slot ))
+            
+            #which job assignment is mutated?
+            mutated_j = np.random.randint(0, self.n_job)
+            
+            mutated_duration = self.job[mutated_j, 1]
+            mutated_start = np.random.randint(0, self.n_slot - mutated_duration)
+            mutated_dc = np.random.randint(0, self.n_dc)
+             
+            
+            # list of 3 arrays of i, j ,t
+            assigned = np.where(_solution==1)
+            
+            for a in range(assigned[0].shape[0]):
+                if assigned[0][a] == mutated_j:
+                    for d in range(mutated_duration):
+                        # decision variables become zero before the variables are mutated
+                        _solution[assigned[0][a+d],assigned[1][a+d],assigned[2][a+d]] = 0
+                        
+                        # decision variables become one after mutation
+                        assigned[1][a+d] = mutated_dc
+                        assigned[2][a+d] = mutated_start + d
+                        _solution[assigned[0][a+d],assigned[1][a+d],assigned[2][a+d]] = 1
+                    
+                    # Once the mutation on the variables for a job is finished, exit from the loop
+                    break
+            
+            
+            _new_solutions = _new_solutions.append(pd.DataFrame(np.append(np.reshape(_solution, -1), self.obj_values(_solution))).T)
+       
+        return _new_solutions            
+            
 
     '''
     This function generates initial solutions randomly.
