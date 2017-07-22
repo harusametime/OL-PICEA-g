@@ -3,6 +3,7 @@ import sys
 from numpy import int
 import pandas as pd
 import random
+import time
 
 from scipy.stats import norm
 from mpmath import rand
@@ -18,20 +19,26 @@ class problem:
         flag_OL indicates that this uses Opposition based Learning strategy
         In our problem, this strategy generate infeasible solutions due to the constraint.
         As default, this flag is set to False.
-
         '''
         flag_OL = False
 
         np.random.seed(0)
 
+        self.n_job = 25
+        
+        # True evaluation for comparison
+        self.true_eval = np.loadtxt("./problem1/opteval_" + str(self.n_job) + "job.txt", delimiter=" ")
+        self.true_eval = self.true_eval[:,1:3]
+        
+        
         # Parameter of chance-constrained programming, probabity of holding
         self.alpha = 0.1
+        price = np.loadtxt("./problem1/price.csv", delimiter=",")
+        self.job = np.loadtxt("./problem1/job50.csv", delimiter="," , dtype=int)
+        self.job = self.job[:self.n_job, :]
+        
 
-        price = np.loadtxt("../problem1/price.csv", delimiter=",")
-        self.job = np.loadtxt("../problem1/job50.csv", delimiter="," , dtype=int)
-        self.job = self.job[:30, :]
-
-        insolation = np.loadtxt("../problem1/insolation.csv",delimiter =",") # Unit of insolation is 0.01[MJ/m^2] in the file
+        insolation = np.loadtxt("./problem1/insolation.csv",delimiter =",") # Unit of insolation is 0.01[MJ/m^2] in the file
         #insolation = insolation[:, :8]
 
         self.n_slot = insolation.shape[1]   # the number of time slots considered in scheduling (indexed by t)
@@ -109,7 +116,8 @@ class problem:
         # self.d = [ self.model.addVar(self.n_job, ub = self.n_slot, name = "d" +str(i)) for i in range(self.n_job)]
 
         self.x = np.zeros((self.n_job, self.n_dc, self.n_slot))
-        #self.w ={}
+        
+        self.start = time.time()
 
 
         '''
@@ -187,7 +195,7 @@ class problem:
             '''
             Generate next solutions
             '''
-            print itr_generation, " generation"
+            print "##", itr_generation, " generation"
             itr_generation = itr_generation+ 1
             
             n_crossover = int(n_population * (1-mutation_rate))
@@ -198,12 +206,23 @@ class problem:
             population_with_eval = population_with_eval.append(mutate_population)
              
             self.update_best(population_with_eval, obj1, obj2)
-            print self.current_best
-           
+            
+            
+            '''
+            Evaluation summary
+            - optimality
+            - found candidate pareto optimal solutions
+            - computational time  
+            '''
+            self.evaluate_optimality(obj1, obj2)
+            
+            self.show_time()
+            
+            
+            
             '''
             add goal vectors
             '''
-            
             goals = np.vstack((goals, self.generate_goals(population_with_eval, obj1, obj2, n_goals)))
             
             '''
@@ -241,6 +260,26 @@ class problem:
             ranks[temp] = np.arange(len(goal_fitness))
             goals = goals[ranks < n_goals]
                         
+    '''
+    Evaluate optimality
+    ''' 
+    def evaluate_optimality(self, obj1, obj2):
+        current_eval = self.current_best.iloc[:, obj1:obj2+1].as_matrix()
+        total_optimality = 0
+        for e in range(self.true_eval.shape[0]):
+            optimality = 0
+            for c in range(current_eval.shape[0]):
+                if self.true_eval[e, 0] == current_eval[c, 0]:
+                    print self.true_eval[e, 0], current_eval[c, 1], self.true_eval[e, 1]
+                    optimality = 1 - float(current_eval[c, 1] - self.true_eval[e, 1]) / self.true_eval[e, 1]
+                    break
+                elif self.true_eval[e, 0] < current_eval[c, 0]:
+                    break
+            
+            total_optimality += optimality
+        
+        print "Average Optimality:", float(total_optimality) / self.true_eval.shape[0]
+        print "Number of found solutions:", current_eval.shape[0]
     '''
     generate goal vectors
     ''' 
@@ -501,214 +540,10 @@ class problem:
              new_X[s,i,j,t] = random.randint(0,1)
         return new_X
 
+
     '''
-    Basic epsion constraint method uses epsilon value as the upper bound on f_1,
-    but our method uses upper (u_eps) and lower bounds (l_eps) on fq_1.
+    show elapsed time
     '''
-    def _set_eps_constraint(self, l_eps, u_eps):
-
-        eps_expr = LinExpr()
-        eps_expr.add(sum( self.r_power[i] * self.x[i,j,t] - self.y[i,j, t] for i in range(self.n_job) for j in range(self.n_dc) for t in range(self.n_slot)))
-        #eps_expr.add(sum(self.d[i] for i in range(self.n_job)))
-        self.u_eps_constr = self.model.addConstr(eps_expr <= u_eps, "u_eps_const")
-        self.l_eps_constr = self.model.addConstr(eps_expr >= l_eps, "l_eps_const")
-
-    def _set_constraints(self):
-
-        '''
-        Constraint1: total consumped power can not be more than generated power (sample average approximation
-        Constraint2: total consumped power can not be more than total required power
-        Constraint3: the number of cores used for processing can not be more than the number of free processors
-        constraint4: sum of x must be equal to L
-        Constraint5: job processing can not be interrupted
-        Constraint6: subconstraint for constraint 5(Start point of job processing is only one)
-        Constraint7: count of w_a must not be less than S(1-alpha)
-        Constraint8: sum of z must be equal to 1
-        '''
-
-        for j in range(self.n_dc):
-            for t in range(self.n_slot):
-                const1_expr = LinExpr()
-                const1_expr.add(sum(self.y[i,j,t] for i in range(self.n_job)))
-                self.model.addConstr(const1_expr <= self.g_power_percentile[j,t])
-                #print self.g_power_percentile[j,t]
-
-
-
-        for j in range(self.n_dc):
-            for t in range(self.n_slot):
-                const3_expr = LinExpr()
-
-                for i in range(self.n_job):
-                    # constraint 2
-                    self.model.addConstr(self.y[i,j,t] <= self.r_power[i] * self.x[i,j,t])
-
-                    # sum of x[i,j,t] for const3
-                    const3_expr.add(self.x[i,j,t], self.job[i,0])
-
-                # const3
-                self.model.addConstr(const3_expr <= self.free_proc[j])
-
-            for i in range(self.n_job):
-                L = int(self.job[i, 1])   # Length of job
-
-
-                for t in range(self.n_slot):
-
-
-                    self.model.addConstr(self.d[i]-t*self.z[i,j,t] >= self.job[i,1]-self.deadline[i]-1)
-
-                    if t+ L > self.n_slot:
-                        self.model.addConstr(self.z[i,j,t]== 0)
-
-                    else:
-                        #constraint5
-                        const_test = LinExpr()
-                        # for l in range(t,t+L):
-                        #     print 'x['+str(i)+','+str(j)+','+str(l)+']+',
-                        #     const_test.add(self.x[i,j,l])
-                        #
-                        # print '=z['+str(i)+','+str(j)+','+str(t)+']*',
-                        # print L
-                        # self.model.addConstr(const_test>= self.z[i,j,t] * L)
-
-                        self.model.addConstr(sum(self.x[i,j,l] for l in range(t,t+L)) >= self.z[i,j,t] * L)
-
-
-        for  i in range(self.n_job):
-            L = int(self.job[i, 1])   # Length of job
-            const4_expr = LinExpr()
-            const8_expr = LinExpr()
-            for j in range(self.n_dc):
-
-                for t in range(self.n_slot):
-                    const4_expr.add(self.x[i,j,t])
-
-                    if t < self.n_slot:
-
-                        const8_expr.add(self.z[i,j,t])
-
-
-
-
-            self.model.addConstr(const4_expr == L)   #const4
-            self.model.addConstr(const8_expr == 1 )   #const8
-
-        self.model.update()
-
-
-    def update_objfunc(self, u_eps):
-        self._set_objective(u_eps)
-        self.model.update()
-
-
-    def update_eps_constraint(self, u_eps):
-        self.u_eps_constr.setAttr(GRB.Attr.RHS, u_eps)
-        self.model.update()
-
-    def update_bound(self, deadline):
-        self.model.setAttr("ObjBound", deadline)
-
-    def solve(self, verbose = 1):
-
-        if verbose == 1:
-            self.model.setParam('OutputFlag', 0)
-
-        try:
-            self.model.optimize()
-            # for v in self.model.getVars():
-            #     if 'x' in v.varName and v.x ==1:
-            #         print ('%s %g' % (v.varName, v.x))
-            #     if 'z' in v.varName and v.x ==1:
-            #         print ('%s %g' % (v.varName, v.x))
-
-
-#             P = self.model.objVal
-#             D = sum(self.model.getVarByName('d' + str(i)).x for i in range(self.n_job))
-
-            D = sum(self.model.getVarByName('d' + str(i)).x for i in range(self.n_job))
-            P = sum(self.r_power[i] * self.model.getVarByName('x' + str(i) +','+ str(j) +','+ str(t)).x - self.model.getVarByName('y' + str(i) +','+ str(j) +','+ str(t)).x for i in range(self.n_job) for j in range(self.n_dc) for t in range(self.n_slot))
-
-            return D, P
-
-        except GurobiError as e:
-            print('Error code ' + str(e.errno) + ": " + str(e))
-
-        except AttributeError:
-            print('Encountered an attribute error')
-#        X= pd.DataFrame(index=range(self.n_dc), columns=range(self.n_slot)).fillna(0)
-#        pd.set_option("display.max_columns", 80)
-#
-#        D = 0   #delay
-#        P = 0   #Procurement
-#
-#        result_status = self.solver.Solve()
-#
-#        # The problem has an optimal solution.
-#        if result_status != pywraplp.Solver.OPTIMAL:
-#            return X, P, D, False
-##        assert result_status == pywraplp.Solver.OPTIMAL
-#
-#        # The solution looks legit (when using self.solvers other than
-#        # GLOP_LINEAR_PROGRAMMING, verifying the solution is highly recommended!).
-#        assert self.solver.VerifySolution(1e-7, True)
-#
-#        if verbose == 2:
-#            print'Number of variables =', self.solver.NumVariables()
-#            print'Number of constraints =', self.solver.NumConstraints()
-#
-#            # The objective value of the solution.
-#            print 'Optimal objective value = %d' % self.solver.Objective().Value()
-#
-##         if verbose >=1 :
-##             for i in range(self.n_job):
-##                 for j in range(self.n_dc):
-##                     for t in range(self.n_slot):
-##                         x_name = 'x' + str(i) +','+ str(j) +','+ str(t)
-##                         print x_name, "=",
-##                         print self.solver.LookupVariable(x_name).solution_value()
-#
-#        #Solutions
-#        # (note that job at the same time in the same DC is overwritten)
-#
-#
-#        #print X
-#
-#
-#
-#        for i in range(self.n_job):
-#            d_name = 'd' + str(i)
-#            D += self.solver.LookupVariable(d_name).solution_value()
-#            for j in range(self.n_dc):
-#                for t in range(self.n_slot):
-#                    x_name = 'x' + str(i) +','+ str(j) +','+ str(t)
-#                    if self.solver.LookupVariable(x_name).solution_value() == 1:
-#                        if X.loc[j,t] == 0:
-#                            X.loc[j,t] = str(i+1)
-#                        else:
-#
-#                            temp = X.loc[j,t]
-#                            temp += '/' + str(i+1)
-#                            X.loc[j,t] = temp
-#
-#
-#        for i in range(self.n_job):
-#            for j in range(self.n_dc):
-#                for t in range(self.n_slot):
-#
-#                    x_name ='x' + str(i) +','+ str(j) +','+ str(t)
-#                    #self.eps_constraint.SetCoefficient(self.solver.LookupVariable(x_name), self.r_power[i])
-#                    y_name ='y' + str(i) +','+ str(j) +','+ str(t)
-#                    #self.eps_constraint.SetCoefficient(self.solver.LookupVariable(y_name), -1)
-#                    P += self.r_power[i] * self.solver.LookupVariable(x_name).solution_value() - self.solver.LookupVariable(y_name).solution_value()
-#
-#
-#        return X, D, P, True
-#
-#    def _inf_format(self,eps):
-#        if eps == float("inf"):
-#            return self.solver.infinity()
-#        elif eps == float("-inf"):
-#            return -self.solver.infinity()
-#        else:
-#            return eps
+    def show_time(self):
+        print ("elapsed_time:{0}".format(time.time() - self.start) + "[sec.]")
+   
